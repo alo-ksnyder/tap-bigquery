@@ -56,17 +56,17 @@ def _build_query(keys, filters=[], inclusive_start=True, limit=None):
     if keys.get("datetime_key") and keys.get("start_datetime"):
         if inclusive_start:
             query = (query +
-                     (" AND datetime '{start_datetime}' <= " +
-                      "CAST({datetime_key} as datetime)").format(**keys))
+                     (" AND PARSE_DATE('%Y%m%d', '{start_datetime}') <= " +
+                      "PARSE_DATE('%Y%m%d',{datetime_key})").format(**keys))
         else:
             query = (query +
-                     (" AND datetime '{start_datetime}' < " +
-                      "CAST({datetime_key} as datetime)").format(**keys))
+                     (" AND PARSE_DATE('%Y%m%d', '{start_datetime}') < " +
+                      "PARSE_DATE('%Y%m%d',{datetime_key})").format(**keys))
 
     if keys.get("datetime_key") and keys.get("end_datetime"):
         query = (query +
-                 (" AND CAST({datetime_key} as datetime) < " +
-                  "datetime '{end_datetime}'").format(**keys))
+                 (" AND PARSE_DATE('%Y%m%d', {datetime_key}) < " +
+                  "PARSE_DATE ('%Y%m%d', '{end_datetime}')").format(**keys))
     if keys.get("datetime_key"):
         query = (query + " ORDER BY {datetime_key}".format(**keys))
 
@@ -80,13 +80,11 @@ def do_discover(config, stream, output_schema_file=None,
                 add_timestamp=True):
     client = get_bigquery_client()
 
-    start_datetime = dateutil.parser.parse(
-        config.get("start_datetime")).strftime("%Y-%m-%d %H:%M:%S.%f")
+    start_datetime = config.get("start_datetime")
 
     end_datetime = None
     if config.get("end_datetime"):
-        end_datetime = dateutil.parser.parse(
-            config.get("end_datetime")).strftime("%Y-%m-%d %H:%M:%S.%f")
+        end_datetime = config.get("end_datetime")
 
     keys = {"table": stream["table"],
             "columns": stream["columns"],
@@ -171,12 +169,10 @@ def do_sync(config, state, stream):
             inclusive_start = False
     else:
         start_datetime = config.get("start_datetime")
-    start_datetime = dateutil.parser.parse(start_datetime).strftime(
-            "%Y-%m-%d %H:%M:%S.%f")
+    start_datetime = start_datetime
 
     if config.get("end_datetime"):
-        end_datetime = dateutil.parser.parse(
-            config.get("end_datetime")).strftime("%Y-%m-%d %H:%M:%S.%f")
+        end_datetime = config.get("end_datetime")
 
     singer.write_schema(tap_stream_id, stream.schema.to_dict(),
                         stream.key_properties)
