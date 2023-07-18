@@ -56,17 +56,17 @@ def _build_query(keys, filters=[], inclusive_start=True, limit=None):
     if keys.get("datetime_key") and keys.get("start_datetime"):
         if inclusive_start:
             query = (query +
-                     (" AND PARSE_DATE('%Y%m%d', '{start_datetime}') <= " +
-                      "PARSE_DATE('%Y%m%d',{datetime_key})").format(**keys))
+                     (" AND {start_datetime} <= " +
+                      "{datetime_key}").format(**keys))
         else:
             query = (query +
-                     (" AND PARSE_DATE('%Y%m%d', '{start_datetime}') < " +
-                      "PARSE_DATE('%Y%m%d',{datetime_key})").format(**keys))
+                     (" AND {start_datetime}) < " +
+                      "{datetime_key}").format(**keys))
 
     if keys.get("datetime_key") and keys.get("end_datetime"):
         query = (query +
-                 (" AND PARSE_DATE('%Y%m%d', {datetime_key}) < " +
-                  "PARSE_DATE ('%Y%m%d', '{end_datetime}')").format(**keys))
+                 (" AND {datetime_key} < " +
+                  "{end_datetime}").format(**keys))
     if keys.get("datetime_key"):
         query = (query + " ORDER BY {datetime_key}".format(**keys))
 

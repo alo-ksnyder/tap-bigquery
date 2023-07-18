@@ -129,10 +129,10 @@ def parse_args():
     # Capture additional args
     parser.add_argument(
         "--start_datetime", type=str,
-        help="Inclusive start date time in ISO8601-Date-String format: 2019-04-11T00:00:00Z")
+        help="Inclusive start date time in epoch microseconds")
     parser.add_argument(
         "--end_datetime", type=str,
-        help="Exclusive end date time in ISO8601-Date-String format: 2019-04-12T00:00:00Z")
+        help="Exclusive end date time in epoch microseconds")
 
     args = parser.parse_args()
     if args.config:
@@ -162,7 +162,8 @@ def main():
         CONFIG[arg] = args_dict[arg]
 
     if not CONFIG.get("end_datetime"):
-        CONFIG["end_datetime"]  = datetime.datetime.utcnow().isoformat()
+        # Convert to EPOCH MICROSECONDS
+        CONFIG["end_datetime"]  = int(time.time() * 1000000)
 
     singer_utils.check_config(CONFIG, REQUIRED_CONFIG_KEYS)
 
