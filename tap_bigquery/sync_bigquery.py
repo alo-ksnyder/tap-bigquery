@@ -1,4 +1,6 @@
-import json
+import copy, datetime, json, time
+import dateutil.parser
+from decimal import Decimal
 
 from os import environ
 import singer
@@ -28,18 +30,6 @@ BOOKMARK_KEY_NAME = "last_update"
 
 SERVICE_ACCOUNT_INFO_ENV_VAR = "GOOGLE_APPLICATION_CREDENTIALS_STRING"
 credentials_json = environ.get(SERVICE_ACCOUNT_INFO_ENV_VAR)
-
-
-def get_bigquery_client():
-    """Initialize a bigquery client from credentials file JSON,
-    if in environment, else credentials file.
-
-    Returns:
-        Initialized BigQuery client.
-    """
-    if credentials_json:
-        return bigquery.Client.from_service_account_info(json.loads(credentials_json))
-    return bigquery.Client()
 
 
 def get_bigquery_credentials():
@@ -82,8 +72,6 @@ def _build_query(keys, filters=[], inclusive_start=True, limit=None):
 
 
 def do_discover(config, stream, output_schema_file=None, add_timestamp=True):
-    client = get_bigquery_client()
-
     start_datetime = config.get("start_datetime")
 
     end_datetime = None
@@ -97,20 +85,24 @@ def do_discover(config, stream, output_schema_file=None, add_timestamp=True):
         "start_datetime": start_datetime,
         "end_datetime": end_datetime,
     }
-    limit = config.get("limit", 100)
-    query = _build_query(keys, stream.get("filters"), limit=limit)
+
+    project_id = config.get("project_id", "alo-project-prod")
+    bq_credentials = get_bigquery_credentials()
+    # Generate schema from first 100 rows
+    query = _build_query(keys, stream.get("filters"), limit=100)
 
     LOGGER.info("Running query:\n    " + query)
 
-    query_job = client.query(query)
-    results = query_job.result()  # Waits for job to complete.
+    df = pd.read_gbq(
+        query=query,
+        use_bqstorage_api=True,
+        project_id=project_id,
+        credentials=bq_credentials,
+    )
 
     data = []
-    # Read everything upfront
-    for row in results:
-        record = {}
-        for key in row.keys():
-            record[key] = row[key]
+    for row in df.to_json(orient="records", lines=True).splitlines():
+        record = json.loads(row)
         data.append(record)
 
     if not data:
@@ -166,7 +158,6 @@ def do_sync(config, state, stream):
     singer.set_currently_syncing(state, stream.tap_stream_id)
     singer.write_state(state)
 
-    client = get_bigquery_client()
     metadata = stream.metadata[0]["metadata"]
     tap_stream_id = stream.tap_stream_id
 
@@ -193,7 +184,7 @@ def do_sync(config, state, stream):
     }
 
     limit = config.get("limit", None)
-    project_id = config.get("project_id")
+    project_id = config.get("project_id", "alo-project-prod")
     bq_credentials = get_bigquery_credentials()
     query = _build_query(
         keys, metadata.get("filters", []), inclusive_start, limit=limit
