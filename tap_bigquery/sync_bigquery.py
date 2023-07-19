@@ -1,12 +1,12 @@
-import copy, datetime, json, time
-import dateutil.parser
-from decimal import Decimal
+import json
 
 from os import environ
 import singer
 import singer.metrics as metrics
 
 from google.cloud import bigquery
+from google.oauth2 import service_account
+import pandas as pd
 
 from . import utils
 import getschema
@@ -28,6 +28,7 @@ LEGACY_TIMESTAMP = "_etl_tstamp"
 BOOKMARK_KEY_NAME = "last_update"
 
 SERVICE_ACCOUNT_INFO_ENV_VAR = "GOOGLE_APPLICATION_CREDENTIALS_STRING"
+credentials_json = environ.get(SERVICE_ACCOUNT_INFO_ENV_VAR)
 
 def get_bigquery_client():
     """Initialize a bigquery client from credentials file JSON,
@@ -36,10 +37,14 @@ def get_bigquery_client():
     Returns:
         Initialized BigQuery client.
     """
-    credentials_json = environ.get(SERVICE_ACCOUNT_INFO_ENV_VAR)
     if credentials_json:
         return bigquery.Client.from_service_account_info(json.loads(credentials_json))
     return bigquery.Client()
+
+def get_bigquery_credentials():
+    return service_account.Credentials.from_service_account_info(
+        json.loads(credentials_json),
+    )
 
 def _build_query(keys, filters=[], inclusive_start=True, limit=None):
     columns = ",".join(keys["columns"])
@@ -185,64 +190,27 @@ def do_sync(config, state, stream):
             }
 
     limit = config.get("limit", None)
+    project_id = config.get("project_id", "alo-project-prod")
+    bq_credentials = get_bigquery_credentials()
     query = _build_query(keys, metadata.get("filters", []), inclusive_start,
                          limit=limit)
-    query_job = client.query(query)
 
-    properties = stream.schema.properties
     last_update = start_datetime
 
     LOGGER.info("Running query:\n    %s" % query)
 
-    extract_tstamp = datetime.datetime.utcnow()
-    extract_tstamp = extract_tstamp.replace(tzinfo=datetime.timezone.utc)
+    df = pd.read_gbq(
+        query=query,
+        use_bqstorage_api=True,
+        project_id=project_id,
+        credentials=bq_credentials
+    )
 
     with metrics.record_counter(tap_stream_id) as counter:
-        for row in query_job:
-            record = {}
-            for key in properties.keys():
-                prop = properties[key]
-
-                if key in [LEGACY_TIMESTAMP,
-                           EXTRACT_TIMESTAMP,
-                           BATCH_TIMESTAMP]:
-                    continue
-
-                if row[key] is None:
-                    if prop.type[0] != "null":
-                        raise ValueError(
-                            "NULL value not allowed by the schema"
-                        )
-                    else:
-                        record[key] = None
-                elif prop.format == "date-time":
-                    if type(row[key]) == str:
-                        r = dateutil.parser.parse(row[key])
-                    elif type(row[key]) == datetime.date:
-                        r = datetime.datetime(
-                            year=row[key].year,
-                            month=row[key].month,
-                            day=row[key].day)
-                    elif type(row[key]) == datetime.datetime:
-                        r = row[key]
-                    record[key] = r.isoformat()
-                elif prop.type[1] == "string":
-                    record[key] = str(row[key])
-                elif prop.type[1] == "number":
-                    record[key] = Decimal(row[key])
-                elif prop.type[1] == "integer":
-                    record[key] = int(row[key])
-                else:
-                    record[key] = row[key]
-
-            if LEGACY_TIMESTAMP in properties.keys():
-                record[LEGACY_TIMESTAMP] = int(round(time.time() * 1000))
-            if EXTRACT_TIMESTAMP in properties.keys():
-                record[EXTRACT_TIMESTAMP] = extract_tstamp.isoformat()
-
-            singer.write_record(stream.stream, record)
-
+        for row in df.to_json(orient = "records", lines=True).splitlines():
+            record = json.loads(row)
             last_update = record[keys["datetime_key"]]
+            singer.write_record(stream.stream, record)
             counter.increment()
 
     state = singer.write_bookmark(state, tap_stream_id, BOOKMARK_KEY_NAME,
