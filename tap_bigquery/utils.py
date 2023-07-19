@@ -10,6 +10,7 @@ def get_logger(name="handoff"):
         logging.basicConfig(
             stream=sys.stdout,
             format="%(levelname)s - %(asctime)s - %(name)s - %(message)s",
-            level=logging.INFO)
+            level=logging.INFO,
+        )
         LOGGER = logging.getLogger(name)
     return LOGGER
