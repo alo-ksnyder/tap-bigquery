@@ -15,7 +15,7 @@ from . import sync_bigquery as source
 from . import utils
 
 
-REQUIRED_CONFIG_KEYS = ["streams", "start_datetime"]
+REQUIRED_CONFIG_KEYS = ["streams", "start_datetime", "project_id"]
 
 
 LOGGER = utils.get_logger(__name__)

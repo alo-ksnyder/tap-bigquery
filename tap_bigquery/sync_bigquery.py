@@ -193,7 +193,7 @@ def do_sync(config, state, stream):
     }
 
     limit = config.get("limit", None)
-    project_id = config.get("project_id", "alo-project-prod")
+    project_id = config.get("project_id")
     bq_credentials = get_bigquery_credentials()
     query = _build_query(
         keys, metadata.get("filters", []), inclusive_start, limit=limit
