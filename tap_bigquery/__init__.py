@@ -15,7 +15,7 @@ from . import sync_bigquery as source
 from . import utils
 
 
-REQUIRED_CONFIG_KEYS = ["streams", "start_datetime"]
+REQUIRED_CONFIG_KEYS = ["streams", "start_datetime", "project_id"]
 
 
 LOGGER = utils.get_logger(__name__)
@@ -29,9 +29,9 @@ def get_abs_path(path):
 def load_schemas():
     schemas = {}
 
-    for filename in os.listdir(get_abs_path('schemas')):
-        path = get_abs_path('schemas') + '/' + filename
-        file_raw = filename.replace('.json', '')
+    for filename in os.listdir(get_abs_path("schemas")):
+        path = get_abs_path("schemas") + "/" + filename
+        file_raw = filename.replace(".json", "")
         with open(path) as file:
             schemas[file_raw] = json.load(file)
 
@@ -43,28 +43,28 @@ def discover(config):
 
     for stream in config["streams"]:
         stream_metadata, stream_key_properties, schema = source.do_discover(
-            config,
-            stream)
+            config, stream
+        )
 
         # create and add catalog entry
         catalog_entry = {
-            'stream': stream["name"],
-            'tap_stream_id': stream["name"],
-            'schema': schema,
-            'metadata' : stream_metadata,
-            'key_properties': stream_key_properties
+            "stream": stream["name"],
+            "tap_stream_id": stream["name"],
+            "schema": schema,
+            "metadata": stream_metadata,
+            "key_properties": stream_key_properties,
         }
         streams.append(catalog_entry)
 
-    return {'streams': streams}
+    return {"streams": streams}
 
 
 def _get_selected_streams(catalog):
-    '''
+    """
     Gets selected streams.  Checks schema's 'selected' first (legacy)
     and then checks metadata (current), looking for an empty breadcrumb
     and mdata with a 'selected' entry
-    '''
+    """
     selected_streams = []
     for stream in catalog.streams:
         stream_metadata = metadata.to_map(stream.metadata)
@@ -83,12 +83,12 @@ def sync(config, state, catalog):
         stream_schema = stream.schema
         if stream_id in selected_stream_ids:
             source.do_sync(config, state, stream)
-            LOGGER.info('Syncing stream:' + stream_id)
+            LOGGER.info("Syncing stream:" + stream_id)
     return
 
 
 def parse_args():
-    ''' This is to replace singer's default singer_utils.parse_args()
+    """This is to replace singer's default singer_utils.parse_args()
     https://github.com/singer-io/singer-python/blob/master/singer/utils.py
 
     Parse standard command-line args.
@@ -101,38 +101,34 @@ def parse_args():
     Returns the parsed args object from argparse. For each argument that
     point to JSON files (config, state, properties), we will automatically
     load and parse the JSON file.
-    '''
+    """
     parser = argparse.ArgumentParser()
 
-    parser.add_argument(
-        '-c', '--config',
-        help='Config file',
-        required=True)
+    parser.add_argument("-c", "--config", help="Config file", required=True)
+
+    parser.add_argument("-s", "--state", help="State file")
 
     parser.add_argument(
-        '-s', '--state',
-        help='State file')
+        "-p",
+        "--properties",
+        help="Property selections: DEPRECATED, Please use --catalog instead",
+    )
+
+    parser.add_argument("--catalog", help="Catalog file")
 
     parser.add_argument(
-        '-p', '--properties',
-        help='Property selections: DEPRECATED, Please use --catalog instead')
-
-    parser.add_argument(
-        '--catalog',
-        help='Catalog file')
-
-    parser.add_argument(
-        '-d', '--discover',
-        action='store_true',
-        help='Do schema discovery')
+        "-d", "--discover", action="store_true", help="Do schema discovery"
+    )
 
     # Capture additional args
     parser.add_argument(
-        "--start_datetime", type=str,
-        help="Inclusive start date time in epoch microseconds")
+        "--start_datetime",
+        type=str,
+        help="Inclusive start date time in epoch microseconds",
+    )
     parser.add_argument(
-        "--end_datetime", type=str,
-        help="Exclusive end date time in epoch microseconds")
+        "--end_datetime", type=str, help="Exclusive end date time in epoch microseconds"
+    )
 
     args = parser.parse_args()
     if args.config:
@@ -158,12 +154,12 @@ def main():
     args_dict = args.__dict__
     for arg in args_dict.keys():
         if arg in CONFIG.keys() and args_dict[arg] is None:
-           continue
+            continue
         CONFIG[arg] = args_dict[arg]
 
     if not CONFIG.get("end_datetime"):
         # Convert to EPOCH MICROSECONDS
-        CONFIG["end_datetime"]  = int(time.time() * 1000000)
+        CONFIG["end_datetime"] = int(time.time() * 1000000)
 
     singer_utils.check_config(CONFIG, REQUIRED_CONFIG_KEYS)
 
