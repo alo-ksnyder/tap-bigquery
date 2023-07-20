@@ -1,6 +1,7 @@
-import copy, datetime, json, time
+import copy, json, time 
 import dateutil.parser
 from decimal import Decimal
+from datetime import datetime, timedelta
 
 from os import environ
 import singer
@@ -31,6 +32,10 @@ BOOKMARK_KEY_NAME = "last_update"
 SERVICE_ACCOUNT_INFO_ENV_VAR = "GOOGLE_APPLICATION_CREDENTIALS_STRING"
 credentials_json = environ.get(SERVICE_ACCOUNT_INFO_ENV_VAR)
 
+def increment_table_date(datetime_str):
+    d = datetime.strptime(datetime_str, "%Y%m%d") + timedelta(days=1)
+    return datetime.strftime(d, "%Y%m%d")
+
 
 def get_bigquery_credentials():
     return service_account.Credentials.from_service_account_info(
@@ -44,26 +49,9 @@ def _build_query(keys, filters=[], inclusive_start=True, limit=None):
         columns = columns + "," + keys["datetime_key"]
     keys["columns"] = columns
 
-    query = "SELECT {columns} FROM {table} WHERE 1=1".format(**keys)
-
-    if filters:
-        for f in filters:
-            query = query + " AND " + f
-
-    if keys.get("datetime_key") and keys.get("start_datetime"):
-        if inclusive_start:
-            query = query + (" AND {start_datetime} <= " + "{datetime_key}").format(
-                **keys
-            )
-        else:
-            query = query + (" AND {start_datetime}) < " + "{datetime_key}").format(
-                **keys
-            )
-
-    if keys.get("datetime_key") and keys.get("end_datetime"):
-        query = query + (" AND {datetime_key} < " + "{end_datetime}").format(**keys)
-    if keys.get("datetime_key"):
-        query = query + " ORDER BY {datetime_key}".format(**keys)
+    # TODO Select specific tables from the event_ individually to reduce payload
+    # on ingest.
+    query = ("SELECT {columns} FROM {table}{start_datetime} WHERE 1=1").format(**keys)
 
     if limit is not None:
         query = query + " LIMIT %d" % limit
@@ -163,6 +151,10 @@ def do_sync(config, state, stream):
 
     inclusive_start = True
     start_datetime = singer.get_bookmark(state, tap_stream_id, BOOKMARK_KEY_NAME)
+
+    if state.get("bookmarks") is not None:
+        start_datetime = increment_table_date(start_datetime)
+
     if start_datetime:
         if not config.get("start_always_inclusive"):
             inclusive_start = False
